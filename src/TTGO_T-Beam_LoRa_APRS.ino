@@ -469,11 +469,12 @@ void setup()
     temp = sensors.getTempCByIndex(0); // get temp from 1st (!) sensor only
   #else
     #ifdef USE_BME280
-      pressure_offset = calc_pressure_offset(HEIGTH_PRESET);
+      //pressure_offset = calc_pressure_offset(HEIGTH_PRESET);
       bme.takeForcedMeasurement();
       temp = bme.readTemperature();  // bme Temperatur auslesen
       hum = bme.readHumidity();
-      pressure = bme.readPressure()/100 + pressure_offset;
+      //pressure = bme.readPressure()/100 + pressure_offset;
+      pressure = bme.readPressure()/100;
     #else
       temp = dht.getTemperature();
       hum = dht.getHumidity();
@@ -1160,6 +1161,13 @@ case WX_MOVE:
       outString += helper;
     #else
       outString += "b.....";
+    #endif
+    #ifdef HW_COMMENT
+      outString += "/A=";
+      outString += Altx;
+      outString += " Batt=";
+      outString += String(BattVolts,2);
+      outString += ("V");
     #endif
     outString += MY_COMMENT;
     break;
