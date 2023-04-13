@@ -109,6 +109,8 @@ int button_ctr=0;
 // bool ssd1306_found = false;
 // bool axp192_found = false;
 
+bool fix_first = true;
+
 #define TRACKER 0
 #define WX_TRACKER 1
 #define WX_MOVE 2
@@ -208,7 +210,7 @@ byte  lora_TXSource;         //source address of packet received
 byte  lora_FDeviceError;     //flag, set to 1 if RFM98 device error
 byte  lora_TXPacketL;        //length of packet to send, includes source, destination and packet type.
 
-
+int pktCounter = 0;
 unsigned long lastTX = 0L;
 
 float BattVolts;
@@ -706,8 +708,12 @@ void loop() {
 
   if ( (lastTX+nextTX) <= millis()  ) {
     if (tracker_mode != WX_FIXED) {
-      // if (gps.location.isValid()) {
-      if (gps.location.age() < 2000) {
+
+      if (gps.location.isValid()) {
+        fix_first = false;
+      }
+
+      if (!fix_first) {
         digitalWrite(TXLED, HIGH);
         if (hum_temp) {
           writedisplaytext(" ((TX))","","LAT: "+LatShown,"LON: "+LongShown,"SPD: "+String(gps.speed.kmph(),1)+"  CRS: "+String(gps.course.deg(),1),"BAT: "+String(BattVolts,1)+"  HUM: "+String(hum,1),0);
@@ -824,27 +830,51 @@ char *ax25_base91enc(char *s, uint8_t n, uint32_t v)
   return(s);
 }
 
+int Talt_max = 0;
+int Talt_old = 0;
+
+float Tlat=48.2012, Tlon=15.6361;
+int Talt;
+bool fix_stale = true;
+//bool fix_first = true;
+
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //@APA Recalc GPS Position == generate APRS string
 void recalcGPS(){
 
   String Ns, Ew, helper;
   char helper_base91[] = {"0000\0"};
-  float Tlat=48.2012, Tlon=15.6361;
-  int i, Talt, lenalt;
+  int i, lenalt, lenaltm;
   uint32_t aprs_lat, aprs_lon;
   float Lat=0.0;
   float Lon=0.0;
   float Tspeed=0, Tcourse=0;
-  String Speedx, Coursex, Altx;
+  String Speedx, Coursex, Altx, Altx_max;
+  float zrate;
 
   if (tracker_mode != WX_FIXED) {
     Tlat=gps.location.lat();
     Tlon=gps.location.lng();
     Talt=gps.altitude.meters() * 3.28;
+
+    // mark gps fix as stale if older than 2s
+    if (gps.location.age() < 2000) {
+      fix_stale = false;
+    } else {
+      Serial.println("gps fix stale");
+      fix_stale = true;
+    }
+
+    // track maximum altitude
+    if (Talt > Talt_max) {
+      Talt_max = Talt;
+    }
+
     #ifdef USE_BME280
-      pressure_offset = calc_pressure_offset(Talt/3.28);
+      //pressure_offset = calc_pressure_offset(Talt/3.28);
     #endif
+
     Altx = Talt;
     lenalt = Altx.length();
     Altx = "";
@@ -852,6 +882,15 @@ void recalcGPS(){
       Altx += "0";
     }
     Altx += Talt;
+
+    Altx_max = Talt_max;
+    lenaltm = Altx_max.length();
+    Altx_max = "";
+    for (i = 0; i < (6-lenaltm); i++) {
+      Altx_max += "0";
+    }
+    Altx_max += Talt_max;
+
     Tcourse=gps.course.deg();
     Tspeed=gps.speed.knots();
 
@@ -1084,6 +1123,7 @@ switch(tracker_mode) {
       wx = !wx;
     }
   break;
+
 case WX_MOVE:
     #ifdef DS18B20
       sensors.requestTemperatures(); // Send the command to get temperature readings
@@ -1135,14 +1175,14 @@ case WX_MOVE:
         for (i=0; i<4; i++) {
           outString += helper_base91[i];
         }
-        outString += wxSymbol;
+        outString += TxSymbol;
         ax25_base91enc(helper_base91, 1, (uint32_t) Tcourse/4 );
         outString += helper_base91[0];
         ax25_base91enc(helper_base91, 1, (uint32_t) (log1p(Tspeed)/0.07696));
         outString += helper_base91[0];
         outString += "\x48";
       #endif
-    outString += ".../...g...t";
+    outString += ".../...t";
     if (tempf < 0) {     // negative Werte erstellen
       outString += "-";
       if(tempf>-10) {outString += "0"; }
@@ -1154,7 +1194,7 @@ case WX_MOVE:
     helper = String(tempf,0);
     helper.trim();
     outString += helper;
-    outString += "r...p...P...h";
+    outString += "h";
     if(hum<10) {outString += "0"; }
     helper = String(hum,0);
     helper.trim();
@@ -1162,21 +1202,51 @@ case WX_MOVE:
     #ifdef USE_BME280
       outString += "b";
       if(pressure<1000) {outString += "0"; }
-      helper = String(pressure*10,0);
+      helper = String(pressure*10, 0);
       helper.trim();
       outString += helper;
     #else
       outString += "b.....";
     #endif
     #ifdef HW_COMMENT
+      // max 41 bytes? probably for the whole comment!
+
+      // altitude
       outString += "/A=";
       outString += Altx;
-      outString += " Batt=";
-      outString += String(BattVolts,2);
-      outString += ("V");
+
+      // maximum altitude
+      outString += " Am=";
+      outString += Altx_max;
+
+      // packet counter
+      // TODO left pad
+      outString += " Ct=";
+      outString += String(pktCounter, HEX);
+
+      // rate of de/ascend
+      // TODO use sth more precise
+      if (Talt_old == 0) {
+        zrate = 0;
+      } else {
+        zrate = (Talt - Talt_old) / 60.0 * 0.3048;  // feet/min -> m/s
+      }
+      Talt_old = Talt;
+      outString += " Zr=";
+      outString += String(zrate, 2);
+
+      // signal if fix stale
+      if (fix_stale) {
+        outString += " S";
+      } else {
+        outString += " F";
+      }
+
     #endif
     outString += MY_COMMENT;
     break;
+
+
   case TRACKER:
   default:
     #ifndef TX_BASE91
@@ -1276,17 +1346,21 @@ switch(tracker_mode) {
   case WX_TRACKER:
   case WX_MOVE:
   default:
-    if ( gps.location.isValid()   || gps.location.isUpdated() ) {
-      recalcGPS();                        //
-      Outputstring =outString;
+    recalcGPS();
+
+    if (!fix_first) {  // begin sending after first fix
+      Outputstring = outString;
       loraSend(lora_TXStart, lora_TXEnd, 60, 255, 1, 10, TXdbmW, TXFREQ);  //send the packet, data is in TXbuff from lora_TXStart to lora_TXEnd
-    }  else {
-      Outputstring = (Tcall);
-      Outputstring += " No GPS-Fix";
-      Outputstring += " Batt=";
-      Outputstring += String(BattVolts,2);
-      Outputstring += ("V ");
-      loraSend(lora_TXStart, lora_TXEnd, 60, 255, 1, 10, 5, TXFREQ);  //send the packet, data is in TXbuff from lora_TXStart to lora_TXEnd
+
+      // increase packet counter only if packet was sent
+      pktCounter++;
+      if (pktCounter >= 4096) {
+        // 0-4095  12 bit  3 digits hex
+        pktCounter = 0;
+      }
+
+    } else {
+      Serial.println("no gps fix since startup");
     }
     break;
   }

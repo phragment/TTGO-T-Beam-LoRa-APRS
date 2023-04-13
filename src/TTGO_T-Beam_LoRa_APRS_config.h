@@ -43,8 +43,8 @@
 
 #define DONT_USE_FLASH_MEMORY   // uncomment if you don't want to use Flashmemory - instead data below must be corrected
 #define TRACKERMODE 2       // preset MODE here, if flash not used >> "0"=TRACKER, "1"=WX_TRACKER, "2"=WX_MOVE, "3"=WX_FIXED
-#define CALLSIGN "XX3XX-11 "     // enter your callsign here - less then 6 letter callsigns please add "spaces" so total length is 6 (without SSID)
-#define WX_CALLSIGN "XX3XX-11 "  // use same callsign but you can use different SSID
+#define CALLSIGN "DO3RT-11 "     // enter your callsign here - less then 6 letter callsigns please add "spaces" so total length is 6 (without SSID)
+#define WX_CALLSIGN "DO3RT-11 "  // use same callsign but you can use different SSID
 #define LONGITUDE_PRESET "01539.85E" // please in APRS notation DDDMM.mmE or DDDMM.mmW
 #define LATIDUDE_PRESET "4813.62N"   // please in APRS notation DDMM.mmN or DDMM.mmS
 // http://www.aprs.net/vm/DOS/SYMBOLS.HTM
@@ -60,7 +60,7 @@
 // #define MY_COMMENT "TTGO by OE3CJB" // add your coment here - if empty then no comment is sent
 
 // TRANSMIT INTERVAL
-unsigned long max_time_to_nextTX = 180000L;   // set here MAXIMUM time in ms(!) for smart beaconing - minimum time is always 1 min = 60 secs = 60000L !!!
+unsigned long max_time_to_nextTX = 60000L;   // set here MAXIMUM time in ms(!) for smart beaconing - minimum time is always 1 min = 60 secs = 60000L !!!
                                 // when entering 60000L intervall is fixed to 1 min
 
 // show RX values
